@@ -31,7 +31,7 @@ type Alertdog struct {
 	PagerDutyKey          string
 	PagerDutyRunbookURL   string
 
-	mu           sync.Mutex
+	mu           sync.RWMutex
 	checkedIn    time.Time
 	alertmanager Alertmanager
 	pagerduty    Pagerduty
@@ -67,10 +67,7 @@ func (a *Alertdog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *Alertdog) processWatchdog(alert template.Alert) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.checkedIn = time.Now()
-
+	a.CheckIn()
 	for _, prometheus := range a.Expected {
 		var err error
 		switch action := prometheus.CheckIn(alert); action {
@@ -94,8 +91,6 @@ func (a *Alertdog) CheckLoop() {
 }
 
 func (a *Alertdog) Check() {
-	a.mu.Lock()
-	defer a.mu.Unlock()
 	for _, prometheus := range a.Expected {
 		if action := prometheus.Check(); action == ActionAlert {
 			if err := a.alertmanager.Alert(prometheus.Alert); err != nil {
@@ -113,7 +108,15 @@ func (a *Alertdog) Check() {
 	}
 }
 
+func (a *Alertdog) CheckIn() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.checkedIn = time.Now()
+}
+
 func (a *Alertdog) Expired() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 	return time.Now().After(a.checkedIn.Add(a.Expiry))
 }
 

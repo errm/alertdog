@@ -1,6 +1,7 @@
 package alertdog
 
 import (
+	"sync"
 	"time"
 
 	"github.com/errm/alertdog/pkg/alertmanager"
@@ -22,6 +23,7 @@ type Prometheus struct {
 	Alert        alertmanager.Alert
 	checkedIn    time.Time
 	count        uint
+	mu           sync.RWMutex
 }
 
 func (p *Prometheus) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -33,6 +35,8 @@ func (p *Prometheus) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 func (p *Prometheus) CheckIn(alert template.Alert) AlertAction {
 	if p.match(alert.Labels) {
+		p.mu.Lock()
+		defer p.mu.Unlock()
 		if alert.Status == "firing" {
 			p.checkedIn = time.Now()
 			p.count += 1
@@ -50,6 +54,8 @@ func (p *Prometheus) CheckIn(alert template.Alert) AlertAction {
 
 func (p *Prometheus) Check() AlertAction {
 	if p.Expired() {
+		p.mu.Lock()
+		defer p.mu.Unlock()
 		p.count = 0
 		return ActionAlert
 	}
@@ -66,5 +72,7 @@ func (p *Prometheus) match(labels map[string]string) bool {
 }
 
 func (p *Prometheus) Expired() bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	return time.Now().After(p.checkedIn.Add(p.Expiry))
 }

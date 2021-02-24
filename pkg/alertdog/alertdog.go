@@ -50,6 +50,7 @@ func (a *Alertdog) Setup() {
 	a.alertmanager = alertmanager.Alertmanager{Endpoints: a.AlertmanagerEndpoints, Expiry: a.CheckInterval * 2}
 	a.pagerduty = PagerdutyClient{}
 }
+
 func (a *Alertdog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	var data template.Data

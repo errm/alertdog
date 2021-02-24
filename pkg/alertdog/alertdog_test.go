@@ -203,6 +203,38 @@ func TestProcessWatchdog(t *testing.T) {
 				},
 			},
 		},
+		{
+			description: "Don't flap on a single watchdog",
+			// This can happen when prometheus goes down
+			// if the watchdog resolves slightly earlier
+			// on one alertmanager in a ha pair.
+			expectations: []expectation{
+				expectation{method: "Alert", arg: alert2},
+			},
+			watchdogs: []template.Alert{
+				template.Alert{
+					Status: "resolved",
+					Labels: template.KV{
+						"alertname":  "Watchdog",
+						"prometheus": "prom2",
+					},
+				},
+				template.Alert{
+					Status: "firing",
+					Labels: template.KV{
+						"alertname":  "Watchdog",
+						"prometheus": "prom2",
+					},
+				},
+				template.Alert{
+					Status: "resolved",
+					Labels: template.KV{
+						"alertname":  "Watchdog",
+						"prometheus": "prom2",
+					},
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {

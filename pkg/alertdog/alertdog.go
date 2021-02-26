@@ -28,6 +28,7 @@ type Alertdog struct {
 	Expected              []*Prometheus
 	CheckInterval         time.Duration
 	Expiry                time.Duration
+	Port                  uint
 	PagerDutyKey          string `yaml:"pager_duty_key"`
 	PagerDutyRunbookURL   string
 
@@ -42,6 +43,8 @@ func (a *Alertdog) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	a.CheckInterval = defaultInterval
 	defaultExpiry, _ := time.ParseDuration("5m")
 	a.Expiry = defaultExpiry
+	// https://github.com/prometheus/prometheus/wiki/Default-port-allocations
+	a.Port = 9796
 	type plain Alertdog
 	return unmarshal((*plain)(a))
 }

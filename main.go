@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -19,7 +20,7 @@ func main() {
 		return
 	})
 	http.Handle("/webhook", a)
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", a.Port), nil))
 }
 
 func readConfig() *alertdog.Alertdog {

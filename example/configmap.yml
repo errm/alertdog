@@ -8,7 +8,7 @@ data:
     receivers:
       - name: updoggu
         webhook_configs:
-          - url: http://host.docker.internal:8080/webhook
+          - url: http://host.docker.internal:9796/webhook
             send_resolved: true
     route:
       receiver: updoggu

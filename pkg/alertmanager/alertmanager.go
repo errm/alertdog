@@ -2,11 +2,14 @@ package alertmanager
 
 import (
 	"context"
+	"errors"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/prometheus/alertmanager/client"
 	"github.com/prometheus/client_golang/api"
+	"go.uber.org/atomic"
 )
 
 type Alertmanager struct {
@@ -28,28 +31,42 @@ func (a Alertmanager) Resolve(alert Alert) error {
 	return a.push(clientAlert)
 }
 
+// push sends the alerts to all configured Alertmanagers concurrently
+// It returns an error if the alerts could not be sent successfully to at least one Alertmanager.
+// Somewhat based upon https://github.com/prometheus/prometheus/blob/main/notifier/notifier.go
 func (a Alertmanager) push(alert client.Alert) error {
-	var err error
-	var pushes int
+	var (
+		pushes atomic.Int64
+		wg     sync.WaitGroup
+	)
+
 	for _, endpoint := range a.Endpoints {
-		apiClient, err := api.NewClient(api.Config{Address: endpoint})
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-		alertClient := client.NewAlertAPI(apiClient)
-		err = alertClient.Push(
-			context.Background(),
-			alert,
-		)
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-		pushes += 1
+		wg.Add(1)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		go func(address string) {
+			defer wg.Done()
+			apiClient, err := api.NewClient(api.Config{Address: address})
+			if err != nil {
+				log.Printf("Error configuring apiclient for %s - %s", endpoint, err)
+				return
+			}
+			alertClient := client.NewAlertAPI(apiClient)
+			err = alertClient.Push(ctx, alert)
+			if err != nil {
+				log.Printf("Error pushing alert to %s - %s", endpoint, err)
+				return
+			}
+			pushes.Inc()
+		}(endpoint)
 	}
-	if pushes < 1 {
-		return err
+
+	wg.Wait()
+
+	if pushes.Load() < 1 {
+		return errors.New("Failed to push alert to any alertmanager")
 	}
+
 	return nil
 }

@@ -28,7 +28,7 @@ type Alertdog struct {
 	Expected              []*Prometheus
 	CheckInterval         time.Duration
 	Expiry                time.Duration
-	PagerDutyKey          string
+	PagerDutyKey          string `yaml:"pager_duty_key"`
 	PagerDutyRunbookURL   string
 
 	mu           sync.RWMutex
@@ -145,7 +145,7 @@ func (a *Alertdog) pagerDutyAlert(dedupKey, summary string) {
 			},
 		}
 	}
-	if err, response := a.pagerduty.ManageEvent(event); err != nil {
+	if response, err := a.pagerduty.ManageEvent(event); err != nil {
 		log.Printf("Error raising alert on pagerduty: %s %+v", err, response)
 	}
 }

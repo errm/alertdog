@@ -66,7 +66,6 @@ func (a *Alertdog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		a.processWatchdog(alert)
 	}
 	w.WriteHeader(http.StatusOK)
-	return
 }
 
 func (a *Alertdog) processWatchdog(alert template.Alert) {
@@ -154,11 +153,14 @@ func (a *Alertdog) pagerDutyAlert(dedupKey, summary string) {
 }
 
 func (a *Alertdog) pagerDutyResolve(dedupKey string) {
-	a.pagerduty.ManageEvent(pagerduty.V2Event{
+	event := pagerduty.V2Event{
 		Action:     "resolve",
 		RoutingKey: a.PagerDutyKey,
 		DedupKey:   dedupKey,
-	})
+	}
+	if response, err := a.pagerduty.ManageEvent(event); err != nil {
+		log.Printf("Error resolving alert on pagerduty: %s %+v", err, response)
+	}
 }
 
 type PagerdutyClient struct{}

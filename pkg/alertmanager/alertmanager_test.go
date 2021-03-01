@@ -50,9 +50,13 @@ func TestAlert(t *testing.T) {
 				time.Sleep(11 * time.Second)
 			}
 			if s == http.StatusOK {
-				w.Write([]byte("{\"status\":\"success\"}"))
+				if _, err := w.Write([]byte("{\"status\":\"success\"}")); err != nil {
+					panic(err)
+				}
 			} else {
-				w.Write([]byte("{\"status\":\"error\"}"))
+				if _, err := w.Write([]byte("{\"status\":\"error\"}")); err != nil {
+					panic(err)
+				}
 			}
 		}))
 	}

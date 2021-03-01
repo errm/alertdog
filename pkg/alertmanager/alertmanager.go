@@ -51,13 +51,13 @@ func (a Alertmanager) push(alert client.Alert) error {
 			defer wg.Done()
 			apiClient, err := api.NewClient(api.Config{Address: address})
 			if err != nil {
-				log.Printf("Error configuring apiclient for %s - %s", endpoint, err)
+				log.Printf("Error configuring apiclient for %s - %s", address, err)
 				return
 			}
 			alertClient := client.NewAlertAPI(apiClient)
 			err = alertClient.Push(ctx, alert)
 			if err != nil {
-				log.Printf("Error pushing alert to %s - %s", endpoint, err)
+				log.Printf("Error pushing alert to %s - %s", address, err)
 				return
 			}
 			pushes.Inc()

@@ -16,12 +16,12 @@ type AlertmanagerMock struct {
 	mock.Mock
 }
 
-func (a AlertmanagerMock) Alert(alert alertmanager.Alert) error {
+func (a *AlertmanagerMock) Alert(alert alertmanager.Alert) error {
 	args := a.Called(alert)
 	return args.Error(0)
 }
 
-func (a AlertmanagerMock) Resolve(alert alertmanager.Alert) error {
+func (a *AlertmanagerMock) Resolve(alert alertmanager.Alert) error {
 	args := a.Called(alert)
 	return args.Error(0)
 }
@@ -30,7 +30,7 @@ type PagerdutyMock struct {
 	mock.Mock
 }
 
-func (p PagerdutyMock) ManageEvent(event pagerduty.V2Event) (*pagerduty.V2EventResponse, error) {
+func (p *PagerdutyMock) ManageEvent(event pagerduty.V2Event) (*pagerduty.V2EventResponse, error) {
 	args := p.Called(event)
 	response := &pagerduty.V2EventResponse{}
 	return response, args.Error(0)

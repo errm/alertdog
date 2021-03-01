@@ -17,7 +17,6 @@ func main() {
 	go a.CheckLoop()
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		return
 	})
 	http.Handle("/webhook", a)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", a.Port), nil))

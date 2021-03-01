@@ -19,15 +19,17 @@ type Alertmanager struct {
 
 func (a Alertmanager) Alert(alert Alert) error {
 	clientAlert := alert.clientAlert()
-	clientAlert.StartsAt = time.Now()
-	clientAlert.EndsAt = time.Now().Add(a.Expiry)
+	now := time.Now()
+	clientAlert.StartsAt = now
+	clientAlert.EndsAt = now.Add(a.Expiry)
 	return a.push(clientAlert)
 }
 
 func (a Alertmanager) Resolve(alert Alert) error {
 	clientAlert := alert.clientAlert()
-	clientAlert.StartsAt = time.Now()
-	clientAlert.EndsAt = time.Now()
+	now := time.Now()
+	clientAlert.StartsAt = now
+	clientAlert.EndsAt = now
 	return a.push(clientAlert)
 }
 

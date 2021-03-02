@@ -63,6 +63,6 @@ jobs:
             ## Docker images:
 
             * `errm/alertdog:${{ github.event.inputs.releaseTag }}`
-            * `quay.ioerrm/alertdog:${{ github.event.inputs.releaseTag }}`
+            * `quay.io/errm/alertdog:${{ github.event.inputs.releaseTag }}`
           draft: false
           prerelease: false

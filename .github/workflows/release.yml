@@ -1,0 +1,68 @@
+name: Create Release
+on:
+  workflow_dispatch:
+    inputs:
+      versionName:
+        description: 'Release name'
+        required: true
+      releaseTag:
+        description: 'Version tag (format {major}.{minor}.{patch})'
+        required: true
+      releaseBody:
+        description: 'Release body text'
+        required: true
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      -
+        uses: actions/checkout@v2
+      -
+        uses: actions/setup-go@v2
+        with:
+          go-version: '^1.16'
+      -
+        run: go test -v ./...
+      -
+        name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+      -
+        name: Login to DockerHub
+        uses: docker/login-action@v1 
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      -
+        name: Login to Quay
+        uses: docker/login-action@v1 
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_TOKEN }}
+      -
+        name: Build and push
+        id: docker_build
+        uses: docker/build-push-action@v2
+        with:
+          push: true
+          tags: errm/alertdog:{{ github.event.inputs.releaseTag }},quay.io/errm/alertdog:{{ github.event.inputs.releaseTag }}
+          platforms: linux/amd64,linux/arm64
+      -
+        name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.event.inputs.releaseTag }}
+          release_name: Release ${{ github.event.inputs.versionName }}
+          body: |
+            ${{ github.event.inputs.releaseBody }}
+
+            ## Docker images:
+
+            * `errm/alertdog:{{ github.event.inputs.releaseTag }}`
+            * `quay.ioerrm/alertdog:{{ github.event.inputs.releaseTag }}`
+          draft: false
+          prerelease: false

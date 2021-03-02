@@ -1,0 +1,43 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: prometheus-config
+data:
+  alertmanager.yml: |
+    global: {}
+    receivers:
+      - name: updoggu
+        webhook_configs:
+          - url: http://host.docker.internal:9796/webhook
+            send_resolved: true
+    route:
+      receiver: updoggu
+      group_interval: 30s
+      repeat_interval: 1m
+  prometheus.yml: |
+    rule_files:
+      - rules.yml
+    alerting:
+      alertmanagers:
+      - static_configs:
+        - targets:
+          - alertmanager-0:9093
+          - alertmanager-1:9093
+  rules.yml: |
+    groups:
+    - name: watchdog
+      rules:
+      - alert: Watchdog
+        annotations:
+          description: |
+            This is an alert meant to ensure that the entire alerting pipeline is functional.
+            This alert is always firing, therefore it should always be firing in Alertmanager
+            and always fire against a receiver. There are integrations with various notification
+            mechanisms that send a notification when this alert is not firing. For example the
+            "DeadMansSnitch" integration in PagerDuty.
+          summary: Watchdog
+        expr: vector(1)
+        labels:
+          component: general.rules
+          service: kubernetes
+          severity: none

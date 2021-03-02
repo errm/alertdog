@@ -46,7 +46,7 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           push: true
-          tags: errm/alertdog:{{ github.event.inputs.releaseTag }},quay.io/errm/alertdog:{{ github.event.inputs.releaseTag }}
+          tags: errm/alertdog:${{ github.event.inputs.releaseTag }},quay.io/errm/alertdog:${{ github.event.inputs.releaseTag }}
           platforms: linux/amd64,linux/arm64
       -
         name: Create Release
@@ -62,7 +62,7 @@ jobs:
 
             ## Docker images:
 
-            * `errm/alertdog:{{ github.event.inputs.releaseTag }}`
-            * `quay.ioerrm/alertdog:{{ github.event.inputs.releaseTag }}`
+            * `errm/alertdog:${{ github.event.inputs.releaseTag }}`
+            * `quay.ioerrm/alertdog:${{ github.event.inputs.releaseTag }}`
           draft: false
           prerelease: false

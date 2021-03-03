@@ -3,6 +3,8 @@ FROM --platform=${BUILDPLATFORM} golang:1.16-alpine AS base
 ARG TARGETOS
 ARG TARGETARCH
 
+// Fetch ca-certs
+RUN apk add --no-cache ca-certificates && update-ca-certificates
 WORKDIR /src
 ENV CGO_ENABLED=0
 COPY go.* ./
@@ -19,5 +21,6 @@ RUN --mount=target=. \
     GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags="-w -s" -o /out/alertdog .
 
 FROM scratch AS bin
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=build /out/alertdog /
 ENTRYPOINT ["/alertdog"]

@@ -1,6 +1,4 @@
-# Alertdog
-
-![alert dog](docs/dog.jpg "alert dog")
+![Alertdog: Watching over your alerting system; Barks if it breaks.](docs/dog.jpg "woof 🐕 - alertmanager is broken")
 
 [Guard dog](https://www.flickr.com/photos/_pavan_/5519497579) by [`_paVan_`](https://www.flickr.com/photos/_pavan_/) is licensed under [CC BY 2.0](https://creativecommons.org/licenses/by/2.0/)
 

@@ -13,6 +13,10 @@ is not possible via PagerDuty.
 
 You can read detailed information about the design of Alertdog [here](docs/design.md)
 
+## Getting started
+
+To get started with Alertdog check out the [getting started documentation](docs/getting_started.md)
+
 ## Contributing
 
 * If you find a bug please raise an issue.

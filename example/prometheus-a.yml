@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-a
+  labels:
+    app: prometheus-a
+spec:
+  ports:
+  - port: 9090
+    name: web
+  clusterIP: None
+  selector:
+    app: prometheus-a
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: prometheus-a
+spec:
+  selector:
+    matchLabels:
+      app: prometheus-a
+  serviceName: prometheus-a
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: prometheus-a
+    spec:
+      containers:
+      - name: prometheus
+        image: prom/prometheus:v2.24.1
+        ports:
+        - containerPort: 9090
+          name: default
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/prometheus
+      volumes:
+      - name: config-volume
+        configMap:
+         name: prometheus-a-config
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: prometheus-a-config
+data:
+  prometheus.yml: |
+    global:
+      external_labels:
+        team: a
+    rule_files:
+      - rules.yml
+    alerting:
+      alertmanagers:
+      - static_configs:
+        - targets:
+          - alertmanager-0:9093
+          - alertmanager-1:9093
+  rules.yml: |
+    groups:
+    - name: watchdog
+      rules:
+      - alert: Watchdog
+        annotations:
+          description: |
+            This is an alert meant to ensure that the entire alerting pipeline is functional.
+            This alert is always firing, therefore it should always be firing in Alertmanager
+            and always fire against a receiver. There are integrations with various notification
+            mechanisms that send a notification when this alert is not firing. For example the
+            "DeadMansSnitch" integration in PagerDuty.
+          summary: Watchdog
+        expr: vector(1)
+        labels:
+          component: general.rules
+          service: kubernetes
+          severity: none

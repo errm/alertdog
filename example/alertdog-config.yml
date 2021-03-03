@@ -1,0 +1,40 @@
+alertmanager_endpoints:
+  - http://alertmanager-0:9093
+  - http://alertmanager-1:9093
+pager_duty_key: PAGER_DUTY_KEY
+pagerduty_runbook_url: https://example.org/alertmanager_down_runbook
+expected:
+  - match_labels:
+      alertname: Watchdog
+      owner: team-a
+    alert:
+      name: PrometheusAlertFailure
+      labels:
+        severity: critical
+        owner: team-a
+        service: monitoring
+        component: prometheus
+      annotations:
+        runbook: https://example.org/prometheus-alert-failure
+        description: |
+          This alert fires when the "Watchdog" alert fails to be received
+          from a prometheus instance.
+          It could indicate that the prometheus instance is not running, or
+          that there is a configuration issue with prometheus or alertmanager.
+  - match_labels:
+      alertname: Watchdog
+      owner: team-b
+    alert:
+      name: PrometheusAlertFailure
+      labels:
+        severity: critical
+        owner: team-b
+        service: monitoring
+        component: prometheus
+      annotations:
+        runbook: https://example.org/prometheus-alert-failure
+        description: |
+          This alert fires when the "Watchdog" alert fails to be received
+          from a prometheus instance.
+          It could indicate that the prometheus instance is not running, or
+          that there is a configuration issue with prometheus or alertmanager.

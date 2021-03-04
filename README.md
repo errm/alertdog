@@ -5,7 +5,7 @@
 Alertdog is software system to detect failures in a prometheus + alertmanager
 alerting system.
 
-If there is problem that means that prometheus, or alertmanager are not working
+If there is a problem that means that prometheus, or alertmanager are not working
 as expected Alertdog will raise an alert, either via alertmanager, or if that
 is not possible via PagerDuty.
 

@@ -26,7 +26,7 @@ type Pagerduty interface {
 type Alertdog struct {
 	AlertmanagerEndpoints []string `yaml:"alertmanager_endpoints"`
 	Expected              []*Prometheus
-	CheckInterval         time.Duration
+	CheckInterval         time.Duration `yaml:"check_interval"`
 	Expiry                time.Duration
 	Port                  uint
 	PagerDutyKey          string `yaml:"pager_duty_key"`

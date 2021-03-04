@@ -17,13 +17,12 @@ const (
 )
 
 type Prometheus struct {
-	MatchLabels  map[string]string `yaml:"match_labels"`
-	Expiry       time.Duration
-	PagerDutyKey string `yaml:"pager_duty_key"`
-	Alert        alertmanager.Alert
-	checkedIn    time.Time
-	count        uint
-	mu           sync.RWMutex
+	MatchLabels map[string]string `yaml:"match_labels"`
+	Expiry      time.Duration
+	Alert       alertmanager.Alert
+	checkedIn   time.Time
+	count       uint
+	mu          sync.RWMutex
 }
 
 func (p *Prometheus) UnmarshalYAML(unmarshal func(interface{}) error) error {

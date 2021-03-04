@@ -41,7 +41,7 @@ kubectl -n alertdog-example delete sts prometheus-a
 
 4. Check for an alert
 
-After the prometheus watchdog alert expires (Around 3 minutes by default) you
+After the prometheus watchdog alert expires (Around 4 minutes by default) you
 should see a new `PrometheusAlertFailure` in alertmanager.
 
 5. Fix the broken cluster
@@ -61,7 +61,7 @@ If alertmanager is broken, an incident is raised on PagerDuty.
 
 In order for this to work you need to create an [Events API Key](https://support.pagerduty.com/docs/generating-api-keys#events-api-keys) for your PagerDuty service.
 
-edit `example/alertdogc-config.yml` and replace `PAGER_DUTY_KEY` with your key.
+edit `example/alertdog-config.yml` and replace `PAGER_DUTY_KEY` with your key.
 
 Then if alertmanager is broken an incident should be raised after 5m.
 

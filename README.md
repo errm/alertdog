@@ -9,7 +9,7 @@ If there is problem that means that prometheus, or alertmanager are not working
 as expected Alertdog will raise an alert, either via alertmanager, or if that
 is not possible via PagerDuty.
 
-It is designed specifically to meet the needs of an organisation (Cookpad)[https://www.cookpadteam.com/] where
+It is designed specifically to meet the needs of an organisation [Cookpad](https://www.cookpadteam.com/) where
 several Prometheus clusters are managed by different teams, but
 a single alertmanager cluster is utilised.
 

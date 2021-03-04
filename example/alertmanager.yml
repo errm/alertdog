@@ -81,4 +81,26 @@ spec:
       volumes:
       - name: config-volume
         configMap:
-         name: prometheus-config
+         name: alertmanager-config
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: alertmanager-config
+data:
+  alertmanager.yml: |
+    global: {}
+    receivers:
+      - name: alertdog
+        webhook_configs:
+          - url: http://alertdog:9796/webhook
+            send_resolved: true
+      - name: default-receiver
+    route:
+      receiver: default-receiver
+      routes:
+        - match:
+            alertname: Watchdog
+          group_interval: 30s
+          repeat_interval: 1m
+          receiver: alertdog

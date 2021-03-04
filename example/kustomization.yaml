@@ -1,8 +1,13 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: alertdog
+namespace: alertdog-example
 resources:
   - namespace.yml
-  - configmap.yml
-  - prometheus.yml
+  - prometheus-a.yml
+  - prometheus-b.yml
   - alertmanager.yml
+  - alertdog.yml
+secretGenerator:
+- name: alertdog-config
+  files:
+    - alertdog-config.yml

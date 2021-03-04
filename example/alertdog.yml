@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertdog
+  labels:
+    app: alertdog
+spec:
+  selector:
+    app: alertdog
+  ports:
+    - port: 9796
+      name: webhook
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertdog
+  labels:
+    app: alertdog
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alertdog
+  template:
+    metadata:
+      labels:
+        app: alertdog
+    spec:
+      containers:
+      - name: alertdog
+        image: quay.io/errm/alertdog:pr-container-updates
+        ports:
+        - containerPort: 9767
+        volumeMounts:
+        - name: config-volume
+          mountPath: /config.yml
+          subPath: config.yml
+      volumes:
+      - name: config-volume
+        secret:
+          secretName: alertdog-config
+          items:
+          - key: alertdog-config.yml
+            path: config.yml

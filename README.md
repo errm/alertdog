@@ -46,7 +46,7 @@ alertmanager_endpoints:
 check_interval: 2m
 
 # How long Alertdog will wait before raising a PagerDuty alert if no webhook
-# requests were recieved from alertmanger (optional) (defaults to 2m)
+# requests were recieved from alertmanger (optional) (defaults to 5m)
 expiry: 5m
 
 # The port that the webhook endpoint is exposed on (optional) (defaults to 9767)

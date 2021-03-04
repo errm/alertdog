@@ -21,6 +21,15 @@ You can read detailed information about the design of Alertdog [here](docs/desig
 
 To get started with Alertdog check out the [getting started documentation](docs/getting_started.md)
 
+## Installation
+
+Alertdog is released as a docker image to docker hub and quay.io
+
+Find details of the released tags [here](https://github.com/errm/alertdog/releases)
+
+We recommend that you run alertdog with a container orchestrator like Kubernetes
+see an example [here](example/alertdog.yml)
+
 ## Config File Format
 
 `config.yml`

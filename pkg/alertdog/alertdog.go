@@ -31,7 +31,7 @@ type Alertdog struct {
 	Expiry                time.Duration
 	Port                  uint
 	PagerDutyKey          string `yaml:"pager_duty_key"`
-	PagerDutyRunbookURL   string
+	PagerDutyRunbookURL   string `yaml:"pagerduty_runbook_url"`
 
 	mu           sync.RWMutex
 	checkedIn    time.Time

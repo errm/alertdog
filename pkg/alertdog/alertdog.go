@@ -1,6 +1,7 @@
 package alertdog
 
 import (
+	"os"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -45,6 +46,7 @@ func (a *Alertdog) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	a.Expiry = defaultExpiry
 	// https://github.com/prometheus/prometheus/wiki/Default-port-allocations
 	a.Port = 9796
+	a.PagerDutyKey = os.Getenv("PAGER_DUTY_KEY")
 	type plain Alertdog
 	return unmarshal((*plain)(a))
 }

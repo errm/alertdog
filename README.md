@@ -23,7 +23,7 @@ To get started with Alertdog check out the [getting started documentation](docs/
 
 ## Installation
 
-Alertdog is released as a docker image to [docker hub](https://hub.docker.com/r/errm/alertdog), [quay.io](https://quay.io/repository/errm/alertdog?tab=tags) and [aws ecr](https://gallery.ecr.aws/w5g2l5d0/alertdog)
+Alertdog is released as a docker image to [docker hub](https://hub.docker.com/r/errm/alertdog), [quay.io](https://quay.io/repository/errm/alertdog?tab=tags) and [aws ecr](https://gallery.ecr.aws/errm/alertdog)
 
 Find details of the released tags [here](https://github.com/errm/alertdog/releases)
 

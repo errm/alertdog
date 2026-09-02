@@ -1,11 +1,11 @@
 package alertdog
 
 import (
-	"os"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -37,7 +37,15 @@ type Alertdog struct {
 	checkedIn    time.Time
 	alertmanager Alertmanager
 	pagerduty    Pagerduty
+
+	incidentsMu sync.Mutex
+	incidents   map[string]bool
 }
+
+const (
+	dedupKeyAlertmanagerPush = "alertdog:alertmanager-push"
+	dedupKeyWebhookExpiry    = "alertdog:webhook-expiry"
+)
 
 func (a *Alertdog) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	defaultInterval, _ := time.ParseDuration("2m")
@@ -73,17 +81,21 @@ func (a *Alertdog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (a *Alertdog) processWatchdog(alert template.Alert) {
 	a.CheckIn()
 	for _, prometheus := range a.Expected {
-		var err error
 		switch action := prometheus.CheckIn(alert); action {
 		case ActionAlert:
-			err = a.alertmanager.Alert(prometheus.Alert)
+			a.reportPushResult(a.alertmanager.Alert(prometheus.Alert))
 		case ActionResolve:
-			err = a.alertmanager.Resolve(prometheus.Alert)
-		}
-		if err != nil {
-			a.pagerDutyAlert("alertdog:alertmanager-push", "Alertdog cannot push alerts to alertmanager")
+			a.reportPushResult(a.alertmanager.Resolve(prometheus.Alert))
 		}
 	}
+}
+
+func (a *Alertdog) reportPushResult(err error) {
+	if err != nil {
+		a.pagerDutyAlert(dedupKeyAlertmanagerPush, "Alertdog cannot push alerts to alertmanager")
+		return
+	}
+	a.pagerDutyResolve(dedupKeyAlertmanagerPush)
 }
 
 func (a *Alertdog) CheckLoop() {
@@ -97,18 +109,16 @@ func (a *Alertdog) CheckLoop() {
 func (a *Alertdog) Check() {
 	for _, prometheus := range a.Expected {
 		if action := prometheus.Check(); action == ActionAlert {
-			if err := a.alertmanager.Alert(prometheus.Alert); err != nil {
-				a.pagerDutyAlert("alertdog:alertmanager-push", "Alertdog cannot push alerts to alertmanager")
-			}
+			a.reportPushResult(a.alertmanager.Alert(prometheus.Alert))
 		}
 	}
 	if a.Expired() {
 		a.pagerDutyAlert(
-			"alertdog:webhook-expiry",
+			dedupKeyWebhookExpiry,
 			fmt.Sprintf("Alertdog: didn't receive webhook from alert manager for over %v", a.Expiry),
 		)
 	} else {
-		a.pagerDutyResolve("alertdog:webhook-expiry")
+		a.pagerDutyResolve(dedupKeyWebhookExpiry)
 	}
 }
 
@@ -125,6 +135,11 @@ func (a *Alertdog) Expired() bool {
 }
 
 func (a *Alertdog) pagerDutyAlert(dedupKey, summary string) {
+	a.incidentsMu.Lock()
+	defer a.incidentsMu.Unlock()
+	if a.incidents[dedupKey] {
+		return
+	}
 	log.Println("PagerDuty: ", summary)
 	event := pagerduty.V2Event{
 		Action:     "trigger",
@@ -151,10 +166,18 @@ func (a *Alertdog) pagerDutyAlert(dedupKey, summary string) {
 	}
 	if response, err := a.pagerduty.ManageEvent(event); err != nil {
 		log.Printf("Error raising alert on pagerduty: %s %+v", err, response)
+		return
 	}
+	a.setIncident(dedupKey, true)
 }
 
 func (a *Alertdog) pagerDutyResolve(dedupKey string) {
+	a.incidentsMu.Lock()
+	defer a.incidentsMu.Unlock()
+	if !a.incidents[dedupKey] {
+		return
+	}
+	log.Println("PagerDuty: resolving ", dedupKey)
 	event := pagerduty.V2Event{
 		Action:     "resolve",
 		RoutingKey: a.PagerDutyKey,
@@ -162,7 +185,16 @@ func (a *Alertdog) pagerDutyResolve(dedupKey string) {
 	}
 	if response, err := a.pagerduty.ManageEvent(event); err != nil {
 		log.Printf("Error resolving alert on pagerduty: %s %+v", err, response)
+		return
 	}
+	a.setIncident(dedupKey, false)
+}
+
+func (a *Alertdog) setIncident(dedupKey string, triggered bool) {
+	if a.incidents == nil {
+		a.incidents = map[string]bool{}
+	}
+	a.incidents[dedupKey] = triggered
 }
 
 type PagerdutyClient struct{}

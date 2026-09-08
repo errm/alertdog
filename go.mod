@@ -1,6 +1,6 @@
 module github.com/errm/alertdog
 
-go 1.15
+go 1.16
 
 require (
 	github.com/PagerDuty/go-pagerduty v1.3.0

@@ -15,21 +15,23 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       -
-        uses: actions/checkout@v2
+        uses: actions/checkout@v7
       -
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v7
         with:
-          go-version: '^1.16'
+          go-version-file: go.mod
       -
         run: go test -v ./...
       -
         name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
+        uses: docker/setup-buildx-action@v4
       -
         name: Login to Public ECR
-        uses: docker/login-action@v1
+        uses: docker/login-action@v4
         with:
           registry: public.ecr.aws
           username: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -38,13 +40,13 @@ jobs:
           AWS_REGION: us-east-1
       -
         name: Login to DockerHub
-        uses: docker/login-action@v1 
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       -
         name: Login to Quay
-        uses: docker/login-action@v1 
+        uses: docker/login-action@v4
         with:
           registry: quay.io
           username: ${{ secrets.QUAY_USERNAME }}
@@ -52,20 +54,20 @@ jobs:
       -
         name: Build and push
         id: docker_build
-        uses: docker/build-push-action@v2
+        uses: docker/build-push-action@v7
         with:
           push: true
           tags: errm/alertdog:${{ github.event.inputs.releaseTag }},quay.io/errm/alertdog:${{ github.event.inputs.releaseTag }},public.ecr.aws/errm/alertdog:${{ github.event.inputs.releaseTag }}
           platforms: linux/amd64,linux/arm64
+          provenance: false
       -
         name: Create Release
         id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event.inputs.releaseTag }}
-          release_name: Release ${{ github.event.inputs.versionName }}
+          name: Release ${{ github.event.inputs.versionName }}
+          target_commitish: ${{ github.sha }}
           body: |
             ${{ github.event.inputs.releaseBody }}
 

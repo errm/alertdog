@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PagerDuty/go-pagerduty"
 	"github.com/prometheus/alertmanager/template"
 	"github.com/stretchr/testify/mock"
 
@@ -27,18 +26,18 @@ func (a *AlertmanagerMock) Resolve(alert alertmanager.Alert) error {
 }
 
 type PagerdutyMock struct {
-	mock.Mock
+	alertCalls []string
 }
 
-func (p *PagerdutyMock) ManageEvent(event pagerduty.V2Event) (*pagerduty.V2EventResponse, error) {
-	args := p.Called(event)
-	response := &pagerduty.V2EventResponse{}
-	return response, args.Error(0)
+func (p *PagerdutyMock) Alert(dedupKey, summary string) {
+	p.alertCalls = append(p.alertCalls, dedupKey)
 }
+
+func (p *PagerdutyMock) Resolve(dedupKey string) {}
 
 type expectation struct {
 	method string
-	arg    interface{}
+	args   []interface{}
 	err    error
 }
 
@@ -73,39 +72,17 @@ func TestProcessWatchdog(t *testing.T) {
 
 	error := errors.New("alertmanager is broken")
 
-	pagerDutyEvent := pagerduty.V2Event{
-		Action:     "trigger",
-		RoutingKey: "pagerduty-key",
-		DedupKey:   "alertdog:alertmanager-push",
-		Payload: &pagerduty.V2Payload{
-			Summary:  "Alertdog cannot push alerts to alertmanager",
-			Source:   "alertdog:alertmanager-push",
-			Severity: "critical",
-		},
-		Images: []interface{}{
-			map[string]string{
-				"src": "https://github.com/errm/alertdog/raw/main/docs/dog.jpg",
-			},
-		},
-		Links: []interface{}{
-			map[string]string{
-				"text": "Runbook 📕",
-				"href": "https://example.org/runbook-url",
-			},
-		},
-	}
-
 	var tests = []struct {
-		description           string
-		expectations          []expectation
-		watchdogs             []template.Alert
-		pagerdutyExpectations []expectation
+		description          string
+		expectations         []expectation
+		watchdogs            []template.Alert
+		wantPagerdutyAlerted bool
 	}{
 		{
 			description:  "When we receive a resolved watchdog: alert with the correct alert",
-			expectations: []expectation{expectation{method: "Alert", arg: alert1}},
+			expectations: []expectation{{method: "Alert", args: []interface{}{alert1}}},
 			watchdogs: []template.Alert{
-				template.Alert{
+				{
 					Status: "resolved",
 					Labels: template.KV{
 						"alertname":  "Watchdog",
@@ -116,9 +93,9 @@ func TestProcessWatchdog(t *testing.T) {
 		},
 		{
 			description:  "Fire the correct alert based on labels",
-			expectations: []expectation{expectation{method: "Alert", arg: alert2}},
+			expectations: []expectation{{method: "Alert", args: []interface{}{alert2}}},
 			watchdogs: []template.Alert{
-				template.Alert{
+				{
 					Status: "resolved",
 					Labels: template.KV{
 						"alertname":  "Watchdog",
@@ -129,9 +106,9 @@ func TestProcessWatchdog(t *testing.T) {
 		},
 		{
 			description:  "Don't care about extra labels",
-			expectations: []expectation{expectation{method: "Alert", arg: alert2}},
+			expectations: []expectation{{method: "Alert", args: []interface{}{alert2}}},
 			watchdogs: []template.Alert{
-				template.Alert{
+				{
 					Status: "resolved",
 					Labels: template.KV{
 						"alertname":  "Watchdog",
@@ -144,21 +121,21 @@ func TestProcessWatchdog(t *testing.T) {
 		{
 			description: "Don't do anything with watchdogs that don't match",
 			watchdogs: []template.Alert{
-				template.Alert{
+				{
 					Status: "resolved",
 					Labels: template.KV{
 						"alertname":  "Watchdog",
 						"prometheus": "prom33",
 					},
 				},
-				template.Alert{
+				{
 					Status: "firing",
 					Labels: template.KV{
 						"alertname":  "Watchdog",
 						"prometheus": "prom33",
 					},
 				},
-				template.Alert{
+				{
 					Status: "firing",
 					Labels: template.KV{
 						"alertname":  "Watchdog",
@@ -169,16 +146,16 @@ func TestProcessWatchdog(t *testing.T) {
 		},
 		{
 			description:  "When we receive a firing watchdog twice: resolve the correct alert",
-			expectations: []expectation{expectation{method: "Resolve", arg: alert1}},
+			expectations: []expectation{{method: "Resolve", args: []interface{}{alert1}}},
 			watchdogs: []template.Alert{
-				template.Alert{
+				{
 					Status: "firing",
 					Labels: template.KV{
 						"alertname":  "Watchdog",
 						"prometheus": "prom1",
 					},
 				},
-				template.Alert{
+				{
 					Status: "firing",
 					Labels: template.KV{
 						"alertname":  "Watchdog",
@@ -188,11 +165,11 @@ func TestProcessWatchdog(t *testing.T) {
 			},
 		},
 		{
-			description:           "When alertmanager errors, raise a pagerduty event",
-			expectations:          []expectation{expectation{method: "Alert", arg: alert1, err: error}},
-			pagerdutyExpectations: []expectation{expectation{method: "ManageEvent", arg: pagerDutyEvent}},
+			description:          "When alertmanager errors, raise a pagerduty event",
+			expectations:         []expectation{{method: "Alert", args: []interface{}{alert1}, err: error}},
+			wantPagerdutyAlerted: true,
 			watchdogs: []template.Alert{
-				template.Alert{
+				{
 					Status: "resolved",
 					Labels: template.KV{
 						"alertname":  "Watchdog",
@@ -207,24 +184,24 @@ func TestProcessWatchdog(t *testing.T) {
 			// if the watchdog resolves slightly earlier
 			// on one alertmanager in a ha pair.
 			expectations: []expectation{
-				expectation{method: "Alert", arg: alert2},
+				{method: "Alert", args: []interface{}{alert2}},
 			},
 			watchdogs: []template.Alert{
-				template.Alert{
+				{
 					Status: "resolved",
 					Labels: template.KV{
 						"alertname":  "Watchdog",
 						"prometheus": "prom2",
 					},
 				},
-				template.Alert{
+				{
 					Status: "firing",
 					Labels: template.KV{
 						"alertname":  "Watchdog",
 						"prometheus": "prom2",
 					},
 				},
-				template.Alert{
+				{
 					Status: "resolved",
 					Labels: template.KV{
 						"alertname":  "Watchdog",
@@ -240,7 +217,6 @@ func TestProcessWatchdog(t *testing.T) {
 			alertmanagerMock := &AlertmanagerMock{}
 			alertmanagerMock.Test(t)
 			pagerdutyMock := &PagerdutyMock{}
-			pagerdutyMock.Test(t)
 
 			alertdog := Alertdog{
 				Expected:            []*Prometheus{prom1, prom2},
@@ -251,11 +227,7 @@ func TestProcessWatchdog(t *testing.T) {
 			}
 
 			for _, expectation := range test.expectations {
-				alertmanagerMock.On(expectation.method, expectation.arg).Return(expectation.err)
-			}
-
-			for _, expectation := range test.pagerdutyExpectations {
-				pagerdutyMock.On(expectation.method, expectation.arg).Return(expectation.err)
+				alertmanagerMock.On(expectation.method, expectation.args...).Return(expectation.err)
 			}
 
 			for _, watchdog := range test.watchdogs {
@@ -263,7 +235,12 @@ func TestProcessWatchdog(t *testing.T) {
 			}
 
 			alertmanagerMock.AssertExpectations(t)
-			pagerdutyMock.AssertExpectations(t)
+			if test.wantPagerdutyAlerted && len(pagerdutyMock.alertCalls) == 0 {
+				t.Error("expected pagerduty Alert to be called, but it was not")
+			}
+			if !test.wantPagerdutyAlerted && len(pagerdutyMock.alertCalls) > 0 {
+				t.Errorf("expected no pagerduty Alert calls, got %v", pagerdutyMock.alertCalls)
+			}
 		})
 	}
 }
@@ -281,43 +258,27 @@ func TestCheck(t *testing.T) {
 		},
 	}
 
-	pagerDutyEvent := pagerduty.V2Event{
-		Action:     "trigger",
-		RoutingKey: "this-is-a-key",
-		DedupKey:   "alertdog:webhook-expiry",
-		Payload: &pagerduty.V2Payload{
-			Summary:  "Alertdog: didn't receive webhook from alert manager for over 2m0s",
-			Source:   "alertdog:webhook-expiry",
-			Severity: "critical",
-		},
-		Images: []interface{}{
-			map[string]string{
-				"src": "https://github.com/errm/alertdog/raw/main/docs/dog.jpg",
-			},
-		},
-	}
-
 	var tests = []struct {
-		description           string
-		expectations          []expectation
-		pagerdutyExpectations []expectation
-		watchdogs             []template.Alert
+		description          string
+		expectations         []expectation
+		wantPagerdutyAlerted bool
+		watchdogs            []template.Alert
 	}{
 		{
 			description: "If no watchdogs are received, then fire all alerts, and raise a pagerduty incident",
 			expectations: []expectation{
-				expectation{method: "Alert", arg: alert1},
-				expectation{method: "Alert", arg: alert2},
+				{method: "Alert", args: []interface{}{alert1}},
+				{method: "Alert", args: []interface{}{alert2}},
 			},
-			pagerdutyExpectations: []expectation{expectation{method: "ManageEvent", arg: pagerDutyEvent}},
+			wantPagerdutyAlerted: true,
 		},
 		{
 			description: "Fire the alert if the watchdog was missing",
 			expectations: []expectation{
-				expectation{method: "Alert", arg: alert1},
+				{method: "Alert", args: []interface{}{alert1}},
 			},
 			watchdogs: []template.Alert{
-				template.Alert{
+				{
 					Status: "firing",
 					Labels: template.KV{
 						"alertname":  "Watchdog",
@@ -329,14 +290,14 @@ func TestCheck(t *testing.T) {
 		{
 			description: "Don't fire if watchdogs were received",
 			watchdogs: []template.Alert{
-				template.Alert{
+				{
 					Status: "firing",
 					Labels: template.KV{
 						"alertname":  "Watchdog",
 						"prometheus": "prom2",
 					},
 				},
-				template.Alert{
+				{
 					Status: "firing",
 					Labels: template.KV{
 						"alertname":  "Watchdog",
@@ -348,18 +309,18 @@ func TestCheck(t *testing.T) {
 		{
 			description: "Fire if only resolves where received",
 			expectations: []expectation{
-				expectation{method: "Alert", arg: alert1},
-				expectation{method: "Alert", arg: alert2},
+				{method: "Alert", args: []interface{}{alert1}},
+				{method: "Alert", args: []interface{}{alert2}},
 			},
 			watchdogs: []template.Alert{
-				template.Alert{
+				{
 					Status: "resolved",
 					Labels: template.KV{
 						"alertname":  "Watchdog",
 						"prometheus": "prom2",
 					},
 				},
-				template.Alert{
+				{
 					Status: "resolved",
 					Labels: template.KV{
 						"alertname":  "Watchdog",
@@ -377,7 +338,7 @@ func TestCheck(t *testing.T) {
 
 			alertdog := Alertdog{
 				Expected: []*Prometheus{
-					&Prometheus{
+					{
 						MatchLabels: map[string]string{
 							"alertname":  "Watchdog",
 							"prometheus": "prom1",
@@ -385,7 +346,7 @@ func TestCheck(t *testing.T) {
 						Alert:  alert1,
 						Expiry: time.Minute,
 					},
-					&Prometheus{
+					{
 						MatchLabels: map[string]string{
 							"alertname":  "Watchdog",
 							"prometheus": "prom2",
@@ -401,11 +362,7 @@ func TestCheck(t *testing.T) {
 			}
 
 			for _, expectation := range test.expectations {
-				alertmanagerMock.On(expectation.method, expectation.arg).Return(expectation.err)
-			}
-
-			for _, expectation := range test.pagerdutyExpectations {
-				pagerdutyMock.On(expectation.method, expectation.arg).Return(expectation.err)
+				alertmanagerMock.On(expectation.method, expectation.args...).Return(expectation.err)
 			}
 
 			for _, watchdog := range test.watchdogs {
@@ -414,101 +371,12 @@ func TestCheck(t *testing.T) {
 
 			alertdog.Check()
 			alertmanagerMock.AssertExpectations(t)
-			pagerdutyMock.AssertExpectations(t)
+			if test.wantPagerdutyAlerted && len(pagerdutyMock.alertCalls) == 0 {
+				t.Error("expected pagerduty Alert to be called, but it was not")
+			}
+			if !test.wantPagerdutyAlerted && len(pagerdutyMock.alertCalls) > 0 {
+				t.Errorf("expected no pagerduty Alert calls, got %v", pagerdutyMock.alertCalls)
+			}
 		})
 	}
-}
-
-func TestPagerDutyEventsOnlySentOnTransition(t *testing.T) {
-	watchdog := template.Alert{
-		Status: "firing",
-		Labels: template.KV{"alertname": "Watchdog", "prometheus": "prom1"},
-	}
-
-	newAlertdog := func(t *testing.T) (*Alertdog, *AlertmanagerMock, *PagerdutyMock) {
-		alertmanagerMock := &AlertmanagerMock{}
-		alertmanagerMock.Test(t)
-		pagerdutyMock := &PagerdutyMock{}
-		pagerdutyMock.Test(t)
-		alertdog := &Alertdog{
-			Expected: []*Prometheus{
-				&Prometheus{
-					MatchLabels: map[string]string{"alertname": "Watchdog", "prometheus": "prom1"},
-					Alert:       alertmanager.Alert{Name: "PrometheusAlertFailure"},
-					Expiry:      time.Minute,
-				},
-			},
-			PagerDutyKey: "this-is-a-key",
-			Expiry:       time.Minute,
-			pagerduty:    pagerdutyMock,
-			alertmanager: alertmanagerMock,
-		}
-		return alertdog, alertmanagerMock, pagerdutyMock
-	}
-
-	isEvent := func(action, dedupKey string) interface{} {
-		return mock.MatchedBy(func(event pagerduty.V2Event) bool {
-			return event.Action == action && event.DedupKey == dedupKey
-		})
-	}
-
-	t.Run("webhook expiry triggers once and resolves once", func(t *testing.T) {
-		alertdog, alertmanagerMock, pagerdutyMock := newAlertdog(t)
-		alertmanagerMock.On("Alert", mock.Anything).Return(nil)
-
-		pagerdutyMock.On("ManageEvent", isEvent("trigger", "alertdog:webhook-expiry")).Return(nil).Once()
-		alertdog.Check()
-		alertdog.Check()
-		alertdog.Check()
-		pagerdutyMock.AssertNumberOfCalls(t, "ManageEvent", 1)
-
-		alertdog.processWatchdog(watchdog)
-		pagerdutyMock.On("ManageEvent", isEvent("resolve", "alertdog:webhook-expiry")).Return(nil).Once()
-		alertdog.Check()
-		alertdog.Check()
-		alertdog.Check()
-		pagerdutyMock.AssertNumberOfCalls(t, "ManageEvent", 2)
-		pagerdutyMock.AssertExpectations(t)
-	})
-
-	t.Run("nothing is sent while healthy", func(t *testing.T) {
-		alertdog, _, pagerdutyMock := newAlertdog(t)
-
-		alertdog.processWatchdog(watchdog)
-		alertdog.Check()
-		alertdog.Check()
-		pagerdutyMock.AssertNotCalled(t, "ManageEvent", mock.Anything)
-	})
-
-	t.Run("retries when pagerduty returns an error", func(t *testing.T) {
-		alertdog, alertmanagerMock, pagerdutyMock := newAlertdog(t)
-		alertmanagerMock.On("Alert", mock.Anything).Return(nil)
-
-		pagerdutyMock.On("ManageEvent", isEvent("trigger", "alertdog:webhook-expiry")).Return(errors.New("pagerduty is down")).Once()
-		pagerdutyMock.On("ManageEvent", isEvent("trigger", "alertdog:webhook-expiry")).Return(nil).Once()
-		alertdog.Check()
-		alertdog.Check()
-		alertdog.Check()
-		pagerdutyMock.AssertNumberOfCalls(t, "ManageEvent", 2)
-		pagerdutyMock.AssertExpectations(t)
-	})
-
-	t.Run("alertmanager push failure triggers once and resolves on recovery", func(t *testing.T) {
-		alertdog, alertmanagerMock, pagerdutyMock := newAlertdog(t)
-		alertmanagerMock.On("Alert", mock.Anything).Return(errors.New("alertmanager is broken")).Twice()
-		alertmanagerMock.On("Alert", mock.Anything).Return(nil)
-
-		alertdog.processWatchdog(watchdog)
-		pagerdutyMock.On("ManageEvent", isEvent("trigger", "alertdog:alertmanager-push")).Return(nil).Once()
-		resolved := template.Alert{Status: "resolved", Labels: watchdog.Labels}
-		alertdog.processWatchdog(resolved)
-		alertdog.processWatchdog(resolved)
-		pagerdutyMock.AssertNumberOfCalls(t, "ManageEvent", 1)
-
-		pagerdutyMock.On("ManageEvent", isEvent("resolve", "alertdog:alertmanager-push")).Return(nil).Once()
-		alertdog.processWatchdog(resolved)
-		alertdog.processWatchdog(resolved)
-		pagerdutyMock.AssertNumberOfCalls(t, "ManageEvent", 2)
-		pagerdutyMock.AssertExpectations(t)
-	})
 }

@@ -1,18 +1,18 @@
 package alertdog
 
 import (
-	"os"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
-	"github.com/PagerDuty/go-pagerduty"
 	"github.com/prometheus/alertmanager/template"
 
 	"github.com/errm/alertdog/pkg/alertmanager"
+	"github.com/errm/alertdog/pkg/pagerduty"
 )
 
 type Alertmanager interface {
@@ -20,8 +20,9 @@ type Alertmanager interface {
 	Resolve(alertmanager.Alert) error
 }
 
-type Pagerduty interface {
-	ManageEvent(event pagerduty.V2Event) (*pagerduty.V2EventResponse, error)
+type PagerDuty interface {
+	Alert(dedupKey, summary string)
+	Resolve(dedupKey string)
 }
 
 type Alertdog struct {
@@ -36,14 +37,18 @@ type Alertdog struct {
 	mu           sync.RWMutex
 	checkedIn    time.Time
 	alertmanager Alertmanager
-	pagerduty    Pagerduty
+	pagerduty    PagerDuty
 }
 
+const (
+	dedupKeyAlertmanagerPush = "alertdog:alertmanager-push"
+	dedupKeyWebhookExpiry    = "alertdog:webhook-expiry"
+)
+
 func (a *Alertdog) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	defaultInterval, _ := time.ParseDuration("2m")
-	a.CheckInterval = defaultInterval
-	defaultExpiry, _ := time.ParseDuration("5m")
-	a.Expiry = defaultExpiry
+	// set default values
+	a.CheckInterval = 2 * time.Minute
+	a.Expiry = 5 * time.Minute
 	// https://github.com/prometheus/prometheus/wiki/Default-port-allocations
 	a.Port = 9796
 	a.PagerDutyKey = os.Getenv("PAGER_DUTY_KEY")
@@ -53,7 +58,8 @@ func (a *Alertdog) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 func (a *Alertdog) Setup() {
 	a.alertmanager = alertmanager.Alertmanager{Endpoints: a.AlertmanagerEndpoints, Expiry: a.CheckInterval * 2}
-	a.pagerduty = PagerdutyClient{}
+	a.pagerduty = pagerduty.New(a.PagerDutyKey, a.PagerDutyRunbookURL, nil)
+	a.PagerDutyKey = ""
 }
 
 func (a *Alertdog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -73,17 +79,21 @@ func (a *Alertdog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (a *Alertdog) processWatchdog(alert template.Alert) {
 	a.CheckIn()
 	for _, prometheus := range a.Expected {
-		var err error
 		switch action := prometheus.CheckIn(alert); action {
 		case ActionAlert:
-			err = a.alertmanager.Alert(prometheus.Alert)
+			a.reportPushResult(a.alertmanager.Alert(prometheus.Alert))
 		case ActionResolve:
-			err = a.alertmanager.Resolve(prometheus.Alert)
-		}
-		if err != nil {
-			a.pagerDutyAlert("alertdog:alertmanager-push", "Alertdog cannot push alerts to alertmanager")
+			a.reportPushResult(a.alertmanager.Resolve(prometheus.Alert))
 		}
 	}
+}
+
+func (a *Alertdog) reportPushResult(err error) {
+	if err != nil {
+		a.pagerduty.Alert(dedupKeyAlertmanagerPush, "Alertdog cannot push alerts to alertmanager")
+		return
+	}
+	a.pagerduty.Resolve(dedupKeyAlertmanagerPush)
 }
 
 func (a *Alertdog) CheckLoop() {
@@ -97,18 +107,16 @@ func (a *Alertdog) CheckLoop() {
 func (a *Alertdog) Check() {
 	for _, prometheus := range a.Expected {
 		if action := prometheus.Check(); action == ActionAlert {
-			if err := a.alertmanager.Alert(prometheus.Alert); err != nil {
-				a.pagerDutyAlert("alertdog:alertmanager-push", "Alertdog cannot push alerts to alertmanager")
-			}
+			a.reportPushResult(a.alertmanager.Alert(prometheus.Alert))
 		}
 	}
 	if a.Expired() {
-		a.pagerDutyAlert(
-			"alertdog:webhook-expiry",
+		a.pagerduty.Alert(
+			dedupKeyWebhookExpiry,
 			fmt.Sprintf("Alertdog: didn't receive webhook from alert manager for over %v", a.Expiry),
 		)
 	} else {
-		a.pagerDutyResolve("alertdog:webhook-expiry")
+		a.pagerduty.Resolve(dedupKeyWebhookExpiry)
 	}
 }
 
@@ -122,51 +130,4 @@ func (a *Alertdog) Expired() bool {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return time.Now().After(a.checkedIn.Add(a.Expiry))
-}
-
-func (a *Alertdog) pagerDutyAlert(dedupKey, summary string) {
-	log.Println("PagerDuty: ", summary)
-	event := pagerduty.V2Event{
-		Action:     "trigger",
-		RoutingKey: a.PagerDutyKey,
-		DedupKey:   dedupKey,
-		Payload: &pagerduty.V2Payload{
-			Summary:  summary,
-			Source:   dedupKey,
-			Severity: "critical",
-		},
-		Images: []interface{}{
-			map[string]string{
-				"src": "https://github.com/errm/alertdog/raw/main/docs/dog.jpg",
-			},
-		},
-	}
-	if a.PagerDutyRunbookURL != "" {
-		event.Links = []interface{}{
-			map[string]string{
-				"text": "Runbook 📕",
-				"href": a.PagerDutyRunbookURL,
-			},
-		}
-	}
-	if response, err := a.pagerduty.ManageEvent(event); err != nil {
-		log.Printf("Error raising alert on pagerduty: %s %+v", err, response)
-	}
-}
-
-func (a *Alertdog) pagerDutyResolve(dedupKey string) {
-	event := pagerduty.V2Event{
-		Action:     "resolve",
-		RoutingKey: a.PagerDutyKey,
-		DedupKey:   dedupKey,
-	}
-	if response, err := a.pagerduty.ManageEvent(event); err != nil {
-		log.Printf("Error resolving alert on pagerduty: %s %+v", err, response)
-	}
-}
-
-type PagerdutyClient struct{}
-
-func (p PagerdutyClient) ManageEvent(event pagerduty.V2Event) (*pagerduty.V2EventResponse, error) {
-	return pagerduty.ManageEvent(event)
 }

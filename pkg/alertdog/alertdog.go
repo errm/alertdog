@@ -60,6 +60,7 @@ func (a *Alertdog) UnmarshalYAML(unmarshal func(interface{}) error) error {
 func (a *Alertdog) Setup() {
 	a.alertmanager = alertmanager.Alertmanager{Endpoints: a.AlertmanagerEndpoints, Expiry: a.CheckInterval * 2}
 	a.pagerduty = pagerduty.New(a.PagerDutyKey, a.PagerDutyRunbookURL, nil)
+	a.PagerDutyKey = ""
 }
 
 func (a *Alertdog) ServeHTTP(w http.ResponseWriter, r *http.Request) {

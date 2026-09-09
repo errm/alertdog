@@ -38,10 +38,25 @@ func (p *PagerdutyMock) Resolve(dedupKey string) {
 	p.resolveCalls = append(p.resolveCalls, dedupKey)
 }
 
-type expectation struct {
-	method string
-	args   []interface{}
-	err    error
+type alertExpectation struct {
+	alert alertmanager.Alert
+	err   error
+}
+
+func assertPagerduty(t *testing.T, pd *PagerdutyMock, wantAlerted, wantResolved bool) {
+	t.Helper()
+	if wantAlerted && len(pd.alertCalls) == 0 {
+		t.Error("expected pagerduty Alert to be called, but it was not")
+	}
+	if !wantAlerted && len(pd.alertCalls) > 0 {
+		t.Errorf("expected no pagerduty Alert calls, got %v", pd.alertCalls)
+	}
+	if wantResolved && len(pd.resolveCalls) == 0 {
+		t.Error("expected pagerduty Resolve to be called, but it was not")
+	}
+	if !wantResolved && len(pd.resolveCalls) > 0 {
+		t.Errorf("expected no pagerduty Resolve calls, got %v", pd.resolveCalls)
+	}
 }
 
 func TestProcessWatchdog(t *testing.T) {
@@ -73,18 +88,19 @@ func TestProcessWatchdog(t *testing.T) {
 		Alert: alert2,
 	}
 
-	error := errors.New("alertmanager is broken")
+	alertmanagerError := errors.New("alertmanager is broken")
 
 	var tests = []struct {
 		description           string
-		expectations          []expectation
+		alertExpectations     []alertExpectation
+		resolveExpectations   []alertExpectation
 		watchdogs             []template.Alert
 		wantPagerdutyAlerted  bool
 		wantPagerdutyResolved bool
 	}{
 		{
 			description:           "When we receive a resolved watchdog: alert with the correct alert",
-			expectations:          []expectation{{method: "Alert", args: []interface{}{alert1}}},
+			alertExpectations:     []alertExpectation{{alert: alert1}},
 			wantPagerdutyResolved: true,
 			watchdogs: []template.Alert{
 				{
@@ -98,7 +114,7 @@ func TestProcessWatchdog(t *testing.T) {
 		},
 		{
 			description:           "Fire the correct alert based on labels",
-			expectations:          []expectation{{method: "Alert", args: []interface{}{alert2}}},
+			alertExpectations:     []alertExpectation{{alert: alert2}},
 			wantPagerdutyResolved: true,
 			watchdogs: []template.Alert{
 				{
@@ -112,7 +128,7 @@ func TestProcessWatchdog(t *testing.T) {
 		},
 		{
 			description:           "Don't care about extra labels",
-			expectations:          []expectation{{method: "Alert", args: []interface{}{alert2}}},
+			alertExpectations:     []alertExpectation{{alert: alert2}},
 			wantPagerdutyResolved: true,
 			watchdogs: []template.Alert{
 				{
@@ -153,7 +169,7 @@ func TestProcessWatchdog(t *testing.T) {
 		},
 		{
 			description:           "When we receive a firing watchdog twice: resolve the correct alert",
-			expectations:          []expectation{{method: "Resolve", args: []interface{}{alert1}}},
+			resolveExpectations:   []alertExpectation{{alert: alert1}},
 			wantPagerdutyResolved: true,
 			watchdogs: []template.Alert{
 				{
@@ -174,7 +190,7 @@ func TestProcessWatchdog(t *testing.T) {
 		},
 		{
 			description:          "When alertmanager errors, raise a pagerduty event",
-			expectations:         []expectation{{method: "Alert", args: []interface{}{alert1}, err: error}},
+			alertExpectations:    []alertExpectation{{alert: alert1, err: alertmanagerError}},
 			wantPagerdutyAlerted: true,
 			watchdogs: []template.Alert{
 				{
@@ -191,9 +207,7 @@ func TestProcessWatchdog(t *testing.T) {
 			// This can happen when prometheus goes down
 			// if the watchdog resolves slightly earlier
 			// on one alertmanager in a ha pair.
-			expectations: []expectation{
-				{method: "Alert", args: []interface{}{alert2}},
-			},
+			alertExpectations:     []alertExpectation{{alert: alert2}},
 			wantPagerdutyResolved: true,
 			watchdogs: []template.Alert{
 				{
@@ -235,8 +249,11 @@ func TestProcessWatchdog(t *testing.T) {
 				pagerduty:           pagerdutyMock,
 			}
 
-			for _, expectation := range test.expectations {
-				alertmanagerMock.On(expectation.method, expectation.args...).Return(expectation.err)
+			for _, e := range test.alertExpectations {
+				alertmanagerMock.On("Alert", e.alert).Return(e.err)
+			}
+			for _, e := range test.resolveExpectations {
+				alertmanagerMock.On("Resolve", e.alert).Return(e.err)
 			}
 
 			for _, watchdog := range test.watchdogs {
@@ -244,18 +261,7 @@ func TestProcessWatchdog(t *testing.T) {
 			}
 
 			alertmanagerMock.AssertExpectations(t)
-			if test.wantPagerdutyAlerted && len(pagerdutyMock.alertCalls) == 0 {
-				t.Error("expected pagerduty Alert to be called, but it was not")
-			}
-			if !test.wantPagerdutyAlerted && len(pagerdutyMock.alertCalls) > 0 {
-				t.Errorf("expected no pagerduty Alert calls, got %v", pagerdutyMock.alertCalls)
-			}
-			if test.wantPagerdutyResolved && len(pagerdutyMock.resolveCalls) == 0 {
-				t.Error("expected pagerduty Resolve to be called, but it was not")
-			}
-			if !test.wantPagerdutyResolved && len(pagerdutyMock.resolveCalls) > 0 {
-				t.Errorf("expected no pagerduty Resolve calls, got %v", pagerdutyMock.resolveCalls)
-			}
+			assertPagerduty(t, pagerdutyMock, test.wantPagerdutyAlerted, test.wantPagerdutyResolved)
 		})
 	}
 }
@@ -275,25 +281,23 @@ func TestCheck(t *testing.T) {
 
 	var tests = []struct {
 		description           string
-		expectations          []expectation
+		alertExpectations     []alertExpectation
 		wantPagerdutyAlerted  bool
 		wantPagerdutyResolved bool
 		watchdogs             []template.Alert
 	}{
 		{
 			description: "If no watchdogs are received, then fire all alerts, and raise a pagerduty incident",
-			expectations: []expectation{
-				{method: "Alert", args: []interface{}{alert1}},
-				{method: "Alert", args: []interface{}{alert2}},
+			alertExpectations: []alertExpectation{
+				{alert: alert1},
+				{alert: alert2},
 			},
 			wantPagerdutyAlerted:  true,
 			wantPagerdutyResolved: true,
 		},
 		{
-			description: "Fire the alert if the watchdog was missing",
-			expectations: []expectation{
-				{method: "Alert", args: []interface{}{alert1}},
-			},
+			description:           "Fire the alert if the watchdog was missing",
+			alertExpectations:     []alertExpectation{{alert: alert1}},
 			wantPagerdutyResolved: true,
 			watchdogs: []template.Alert{
 				{
@@ -327,9 +331,9 @@ func TestCheck(t *testing.T) {
 		},
 		{
 			description: "Fire if only resolves where received",
-			expectations: []expectation{
-				{method: "Alert", args: []interface{}{alert1}},
-				{method: "Alert", args: []interface{}{alert2}},
+			alertExpectations: []alertExpectation{
+				{alert: alert1},
+				{alert: alert2},
 			},
 			wantPagerdutyResolved: true,
 			watchdogs: []template.Alert{
@@ -382,8 +386,8 @@ func TestCheck(t *testing.T) {
 				alertmanager: alertmanagerMock,
 			}
 
-			for _, expectation := range test.expectations {
-				alertmanagerMock.On(expectation.method, expectation.args...).Return(expectation.err)
+			for _, e := range test.alertExpectations {
+				alertmanagerMock.On("Alert", e.alert).Return(e.err)
 			}
 
 			for _, watchdog := range test.watchdogs {
@@ -392,18 +396,7 @@ func TestCheck(t *testing.T) {
 
 			alertdog.Check()
 			alertmanagerMock.AssertExpectations(t)
-			if test.wantPagerdutyAlerted && len(pagerdutyMock.alertCalls) == 0 {
-				t.Error("expected pagerduty Alert to be called, but it was not")
-			}
-			if !test.wantPagerdutyAlerted && len(pagerdutyMock.alertCalls) > 0 {
-				t.Errorf("expected no pagerduty Alert calls, got %v", pagerdutyMock.alertCalls)
-			}
-			if test.wantPagerdutyResolved && len(pagerdutyMock.resolveCalls) == 0 {
-				t.Error("expected pagerduty Resolve to be called, but it was not")
-			}
-			if !test.wantPagerdutyResolved && len(pagerdutyMock.resolveCalls) > 0 {
-				t.Errorf("expected no pagerduty Resolve calls, got %v", pagerdutyMock.resolveCalls)
-			}
+			assertPagerduty(t, pagerdutyMock, test.wantPagerdutyAlerted, test.wantPagerdutyResolved)
 		})
 	}
 }

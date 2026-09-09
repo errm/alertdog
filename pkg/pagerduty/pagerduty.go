@@ -11,12 +11,6 @@ type Client interface {
 	ManageEvent(event pagerduty.V2Event) (*pagerduty.V2EventResponse, error)
 }
 
-type DefaultClient struct{}
-
-func (c DefaultClient) ManageEvent(event pagerduty.V2Event) (*pagerduty.V2EventResponse, error) {
-	return pagerduty.ManageEvent(event)
-}
-
 type Deduper struct {
 	routingKey string
 	runbookURL string
@@ -27,12 +21,21 @@ type Deduper struct {
 }
 
 func New(routingKey, runbookURL string, client Client) *Deduper {
+	if client == nil {
+		client = clientFunc(pagerduty.ManageEvent)
+	}
 	return &Deduper{
 		routingKey: routingKey,
 		runbookURL: runbookURL,
 		client:     client,
 		triggered:  map[string]bool{},
 	}
+}
+
+type clientFunc func(pagerduty.V2Event) (*pagerduty.V2EventResponse, error)
+
+func (f clientFunc) ManageEvent(event pagerduty.V2Event) (*pagerduty.V2EventResponse, error) {
+	return f(event)
 }
 
 func (d *Deduper) Alert(dedupKey, summary string) {

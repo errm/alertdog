@@ -68,8 +68,8 @@ func (d *Notifier) Alert(dedupKey, summary string) {
 			},
 		}
 	}
-	if resp, err := d.client.ManageEvent(event); err != nil {
-		log.Printf("Error raising alert on pagerduty: %s %+v", err, resp)
+	if _, err := d.client.ManageEvent(event); err != nil {
+		log.Printf("Error raising alert on pagerduty %s: %s", dedupKey, err)
 		return
 	}
 	d.triggered[dedupKey] = true
@@ -87,8 +87,8 @@ func (d *Notifier) Resolve(dedupKey string) {
 		RoutingKey: d.routingKey,
 		DedupKey:   dedupKey,
 	}
-	if resp, err := d.client.ManageEvent(event); err != nil {
-		log.Printf("Error resolving alert on pagerduty: %s %+v", err, resp)
+	if _, err := d.client.ManageEvent(event); err != nil {
+		log.Printf("Error resolving alert on pagerduty %s: %s", dedupKey, err)
 		return
 	}
 	d.triggered[dedupKey] = false

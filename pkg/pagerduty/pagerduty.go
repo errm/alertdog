@@ -40,9 +40,8 @@ func (f clientFunc) ManageEvent(event pagerduty.V2Event) (*pagerduty.V2EventResp
 
 func (d *Deduper) Alert(dedupKey, summary string) {
 	d.mu.Lock()
-	already := d.triggered[dedupKey]
-	d.mu.Unlock()
-	if already {
+	defer d.mu.Unlock()
+	if d.triggered[dedupKey] {
 		return
 	}
 	log.Println("PagerDuty: ", summary)
@@ -73,16 +72,13 @@ func (d *Deduper) Alert(dedupKey, summary string) {
 		log.Printf("Error raising alert on pagerduty: %s %+v", err, resp)
 		return
 	}
-	d.mu.Lock()
 	d.triggered[dedupKey] = true
-	d.mu.Unlock()
 }
 
 func (d *Deduper) Resolve(dedupKey string) {
 	d.mu.Lock()
-	already := d.triggered[dedupKey]
-	d.mu.Unlock()
-	if !already {
+	defer d.mu.Unlock()
+	if !d.triggered[dedupKey] {
 		return
 	}
 	log.Println("PagerDuty: resolving ", dedupKey)
@@ -95,7 +91,5 @@ func (d *Deduper) Resolve(dedupKey string) {
 		log.Printf("Error resolving alert on pagerduty: %s %+v", err, resp)
 		return
 	}
-	d.mu.Lock()
 	d.triggered[dedupKey] = false
-	d.mu.Unlock()
 }

@@ -20,7 +20,7 @@ type Alertmanager interface {
 	Resolve(alertmanager.Alert) error
 }
 
-type Pagerduty interface {
+type PagerDuty interface {
 	Alert(dedupKey, summary string)
 	Resolve(dedupKey string)
 }
@@ -37,7 +37,7 @@ type Alertdog struct {
 	mu           sync.RWMutex
 	checkedIn    time.Time
 	alertmanager Alertmanager
-	pagerduty    Pagerduty
+	pagerduty    PagerDuty
 }
 
 const (

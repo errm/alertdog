@@ -7,20 +7,20 @@ import (
 	"github.com/PagerDuty/go-pagerduty"
 )
 
-type Client interface {
+type client interface {
 	ManageEvent(event pagerduty.V2Event) (*pagerduty.V2EventResponse, error)
 }
 
 type Notifier struct {
 	routingKey string
 	runbookURL string
-	client     Client
+	client     client
 
 	mu        sync.Mutex
 	triggered map[string]bool
 }
 
-func New(routingKey, runbookURL string, client Client) *Notifier {
+func New(routingKey, runbookURL string, client client) *Notifier {
 	if client == nil {
 		client = clientFunc(pagerduty.ManageEvent)
 	}

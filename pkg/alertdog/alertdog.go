@@ -46,10 +46,9 @@ const (
 )
 
 func (a *Alertdog) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	defaultInterval, _ := time.ParseDuration("2m")
-	a.CheckInterval = defaultInterval
-	defaultExpiry, _ := time.ParseDuration("5m")
-	a.Expiry = defaultExpiry
+	// set default values
+	a.CheckInterval = 2 * time.Minute
+	a.Expiry = 5 * time.Minute
 	// https://github.com/prometheus/prometheus/wiki/Default-port-allocations
 	a.Port = 9796
 	a.PagerDutyKey = os.Getenv("PAGER_DUTY_KEY")
@@ -132,4 +131,3 @@ func (a *Alertdog) Expired() bool {
 	defer a.mu.RUnlock()
 	return time.Now().After(a.checkedIn.Add(a.Expiry))
 }
-

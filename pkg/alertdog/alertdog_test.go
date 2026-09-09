@@ -354,6 +354,7 @@ func TestCheck(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.description, func(t *testing.T) {
 			alertmanagerMock := &AlertmanagerMock{}
+			alertmanagerMock.Test(t)
 			pagerdutyMock := &PagerdutyMock{}
 
 			alertdog := Alertdog{

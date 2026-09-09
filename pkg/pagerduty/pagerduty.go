@@ -11,7 +11,7 @@ type Client interface {
 	ManageEvent(event pagerduty.V2Event) (*pagerduty.V2EventResponse, error)
 }
 
-type Deduper struct {
+type Notifier struct {
 	routingKey string
 	runbookURL string
 	client     Client
@@ -20,11 +20,11 @@ type Deduper struct {
 	triggered map[string]bool
 }
 
-func New(routingKey, runbookURL string, client Client) *Deduper {
+func New(routingKey, runbookURL string, client Client) *Notifier {
 	if client == nil {
 		client = clientFunc(pagerduty.ManageEvent)
 	}
-	return &Deduper{
+	return &Notifier{
 		routingKey: routingKey,
 		runbookURL: runbookURL,
 		client:     client,
@@ -38,7 +38,7 @@ func (f clientFunc) ManageEvent(event pagerduty.V2Event) (*pagerduty.V2EventResp
 	return f(event)
 }
 
-func (d *Deduper) Alert(dedupKey, summary string) {
+func (d *Notifier) Alert(dedupKey, summary string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.triggered[dedupKey] {
@@ -75,7 +75,7 @@ func (d *Deduper) Alert(dedupKey, summary string) {
 	d.triggered[dedupKey] = true
 }
 
-func (d *Deduper) Resolve(dedupKey string) {
+func (d *Notifier) Resolve(dedupKey string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if !d.triggered[dedupKey] {

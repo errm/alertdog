@@ -23,14 +23,14 @@ func isEvent(action, dedupKey string) interface{} {
 	})
 }
 
-func newDeduper(t *testing.T) (*Deduper, *ClientMock) {
+func newNotifier(t *testing.T) (*Notifier, *ClientMock) {
 	client := &ClientMock{}
 	client.Test(t)
 	return New("test-key", "https://example.org/runbook", client), client
 }
 
 func TestAlertOnlyTriggersOnce(t *testing.T) {
-	d, client := newDeduper(t)
+	d, client := newNotifier(t)
 	client.On("ManageEvent", isEvent("trigger", "key1")).Return(nil).Once()
 
 	d.Alert("key1", "something broke")
@@ -42,7 +42,7 @@ func TestAlertOnlyTriggersOnce(t *testing.T) {
 }
 
 func TestResolveOnlyCalledAfterTrigger(t *testing.T) {
-	d, client := newDeduper(t)
+	d, client := newNotifier(t)
 
 	d.Resolve("key1")
 	d.Resolve("key1")
@@ -51,7 +51,7 @@ func TestResolveOnlyCalledAfterTrigger(t *testing.T) {
 }
 
 func TestAlertThenResolve(t *testing.T) {
-	d, client := newDeduper(t)
+	d, client := newNotifier(t)
 	client.On("ManageEvent", isEvent("trigger", "key1")).Return(nil).Once()
 	client.On("ManageEvent", isEvent("resolve", "key1")).Return(nil).Once()
 
@@ -64,7 +64,7 @@ func TestAlertThenResolve(t *testing.T) {
 }
 
 func TestAlertRetryOnError(t *testing.T) {
-	d, client := newDeduper(t)
+	d, client := newNotifier(t)
 	client.On("ManageEvent", isEvent("trigger", "key1")).Return(errors.New("pagerduty is down")).Once()
 	client.On("ManageEvent", isEvent("trigger", "key1")).Return(nil).Once()
 
@@ -77,7 +77,7 @@ func TestAlertRetryOnError(t *testing.T) {
 }
 
 func TestResolveRetryOnError(t *testing.T) {
-	d, client := newDeduper(t)
+	d, client := newNotifier(t)
 	client.On("ManageEvent", isEvent("trigger", "key1")).Return(nil).Once()
 	client.On("ManageEvent", isEvent("resolve", "key1")).Return(errors.New("pagerduty is down")).Once()
 	client.On("ManageEvent", isEvent("resolve", "key1")).Return(nil).Once()
@@ -91,7 +91,7 @@ func TestResolveRetryOnError(t *testing.T) {
 }
 
 func TestIndependentKeys(t *testing.T) {
-	d, client := newDeduper(t)
+	d, client := newNotifier(t)
 	client.On("ManageEvent", isEvent("trigger", "key1")).Return(nil).Times(2)
 	client.On("ManageEvent", isEvent("trigger", "key2")).Return(nil).Once()
 	client.On("ManageEvent", isEvent("resolve", "key1")).Return(nil).Once()

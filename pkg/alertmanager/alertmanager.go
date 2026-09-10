@@ -1,42 +1,47 @@
 package alertmanager
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/prometheus/alertmanager/client"
-	"github.com/prometheus/client_golang/api"
-	"go.uber.org/atomic"
+	"github.com/prometheus/alertmanager/api/v2/models"
 )
 
 type Alertmanager struct {
-	Endpoints []string
-	Expiry    time.Duration
+	Endpoints      []string
+	Expiry         time.Duration
+	RequestTimeout time.Duration
 }
 
+
 func (a Alertmanager) Alert(alert Alert) error {
-	clientAlert := alert.clientAlert()
 	now := time.Now()
-	clientAlert.StartsAt = now
-	clientAlert.EndsAt = now.Add(a.Expiry)
-	return a.push(clientAlert)
+	return a.push(models.PostableAlerts{alert.postableAlert(now, now.Add(a.Expiry))})
 }
 
 func (a Alertmanager) Resolve(alert Alert) error {
-	clientAlert := alert.clientAlert()
 	now := time.Now()
-	clientAlert.StartsAt = now
-	clientAlert.EndsAt = now
-	return a.push(clientAlert)
+	return a.push(models.PostableAlerts{alert.postableAlert(now, now)})
 }
 
-// push sends the alerts to all configured Alertmanagers concurrently
-// It returns an error if the alerts could not be sent successfully to at least one Alertmanager.
-// Somewhat based upon https://github.com/prometheus/prometheus/blob/main/notifier/notifier.go
-func (a Alertmanager) push(alert client.Alert) error {
+func (a Alertmanager) push(alerts models.PostableAlerts) error {
+	b, err := json.Marshal(alerts)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), a.RequestTimeout)
+	defer cancel()
+
 	var (
 		pushes atomic.Int64
 		wg     sync.WaitGroup
@@ -44,31 +49,41 @@ func (a Alertmanager) push(alert client.Alert) error {
 
 	for _, endpoint := range a.Endpoints {
 		wg.Add(1)
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
 
-		go func(address string) {
+		go func(url string) {
 			defer wg.Done()
-			apiClient, err := api.NewClient(api.Config{Address: address})
-			if err != nil {
-				log.Printf("Error configuring apiclient for %s - %s", address, err)
+			if err := pushToAlertmanager(ctx, url, b); err != nil {
+				log.Printf("Error pushing alert to %s - %s", url, err)
 				return
 			}
-			alertClient := client.NewAlertAPI(apiClient)
-			err = alertClient.Push(ctx, alert)
-			if err != nil {
-				log.Printf("Error pushing alert to %s - %s", address, err)
-				return
-			}
-			pushes.Inc()
+			pushes.Add(1)
 		}(endpoint)
 	}
 
 	wg.Wait()
 
 	if pushes.Load() < 1 {
-		return errors.New("Failed to push alert to any alertmanager")
+		return errors.New("failed to push alert to any alertmanager")
 	}
+	return nil
+}
 
+func pushToAlertmanager(ctx context.Context, url string, b []byte) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url+"/api/v2/alerts", bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+	}()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("bad response status %s", resp.Status)
+	}
 	return nil
 }

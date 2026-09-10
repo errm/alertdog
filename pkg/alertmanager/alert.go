@@ -3,7 +3,8 @@ package alertmanager
 import (
 	"time"
 
-	"github.com/prometheus/alertmanager/client"
+	strfmt "github.com/go-openapi/strfmt"
+	"github.com/prometheus/alertmanager/api/v2/models"
 )
 
 type Alert struct {
@@ -12,20 +13,23 @@ type Alert struct {
 	Annotations map[string]string
 }
 
-func (a Alert) clientAlert() client.Alert {
+func (a Alert) postableAlert(startsAt, endsAt time.Time) *models.PostableAlert {
 	labels := toLabelSet(a.Labels)
-	labels[client.LabelName("alertname")] = client.LabelValue(a.Name)
-	return client.Alert{
-		Labels:      labels,
+	labels["alertname"] = a.Name
+	return &models.PostableAlert{
+		StartsAt:    strfmt.DateTime(startsAt),
+		EndsAt:      strfmt.DateTime(endsAt),
 		Annotations: toLabelSet(a.Annotations),
-		StartsAt:    time.Now(),
+		Alert: models.Alert{
+			Labels: labels,
+		},
 	}
 }
 
-func toLabelSet(labels map[string]string) client.LabelSet {
-	labelSet := make(client.LabelSet, len(labels))
+func toLabelSet(labels map[string]string) models.LabelSet {
+	labelSet := make(models.LabelSet, len(labels))
 	for name, value := range labels {
-		labelSet[client.LabelName(name)] = client.LabelValue(value)
+		labelSet[name] = value
 	}
 	return labelSet
 }

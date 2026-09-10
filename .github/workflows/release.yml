@@ -1,20 +1,16 @@
 name: Create Release
 on:
-  workflow_dispatch:
-    inputs:
-      versionName:
-        description: 'Release name'
-        required: true
-      releaseTag:
-        description: 'Version tag (format {major}.{minor}.{patch})'
-        required: true
-      releaseBody:
-        description: 'Release body text'
-        required: true
+  push:
+    tags:
+      - *
 jobs:
+  tests:
+    uses: ./.github/workflows/ci.yaml
   release:
     name: Release
+    needs: [tests]
     runs-on: ubuntu-latest
+    if: github.repository == 'errm/alertdog
     permissions:
       contents: write
     steps:
@@ -44,37 +40,23 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      -
-        name: Login to Quay
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      - name: Docker Metadata
+        id: metadata
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
-          registry: quay.io
-          username: ${{ secrets.QUAY_USERNAME }}
-          password: ${{ secrets.QUAY_TOKEN }}
+          images: |
+            errm/alertdog
+            public.ecr.aws/errm/alertdog
+          tags: |
+            type=semver,pattern={{version}}
+          flavor: |
+            latest=false
       -
         name: Build and push
         id: docker_build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           push: true
-          tags: errm/alertdog:${{ github.event.inputs.releaseTag }},quay.io/errm/alertdog:${{ github.event.inputs.releaseTag }},public.ecr.aws/errm/alertdog:${{ github.event.inputs.releaseTag }}
+          tags: ${{ steps.meta.outputs.tags }}
+          annotations: ${{ steps.meta.outputs.annotations }}k
           platforms: linux/amd64,linux/arm64
-          provenance: false
-      -
-        name: Create Release
-        id: create_release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
-        with:
-          tag_name: ${{ github.event.inputs.releaseTag }}
-          name: Release ${{ github.event.inputs.versionName }}
-          target_commitish: ${{ github.sha }}
-          body: |
-            ${{ github.event.inputs.releaseBody }}
-
-            ## Docker images:
-
-            * `errm/alertdog:${{ github.event.inputs.releaseTag }}`
-            * `quay.io/errm/alertdog:${{ github.event.inputs.releaseTag }}`
-            * `public.ecr.aws/errm/alertdog:${{ github.event.inputs.releaseTag }}`
-          draft: false
-          prerelease: false

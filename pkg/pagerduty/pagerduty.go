@@ -1,6 +1,7 @@
 package pagerduty
 
 import (
+	"context"
 	"log"
 	"sync"
 
@@ -8,7 +9,7 @@ import (
 )
 
 type client interface {
-	ManageEvent(event pagerduty.V2Event) (*pagerduty.V2EventResponse, error)
+	ManageEventWithContext(ctx context.Context, event pagerduty.V2Event) (*pagerduty.V2EventResponse, error)
 }
 
 type Notifier struct {
@@ -22,7 +23,7 @@ type Notifier struct {
 
 func New(routingKey, runbookURL string, client client) *Notifier {
 	if client == nil {
-		client = clientFunc(pagerduty.ManageEvent)
+		client = clientFunc(pagerduty.ManageEventWithContext)
 	}
 	return &Notifier{
 		routingKey: routingKey,
@@ -32,10 +33,10 @@ func New(routingKey, runbookURL string, client client) *Notifier {
 	}
 }
 
-type clientFunc func(pagerduty.V2Event) (*pagerduty.V2EventResponse, error)
+type clientFunc func(context.Context, pagerduty.V2Event) (*pagerduty.V2EventResponse, error)
 
-func (f clientFunc) ManageEvent(event pagerduty.V2Event) (*pagerduty.V2EventResponse, error) {
-	return f(event)
+func (f clientFunc) ManageEventWithContext(ctx context.Context, event pagerduty.V2Event) (*pagerduty.V2EventResponse, error) {
+	return f(ctx, event)
 }
 
 func (d *Notifier) Alert(dedupKey, summary string) {
@@ -68,7 +69,7 @@ func (d *Notifier) Alert(dedupKey, summary string) {
 			},
 		}
 	}
-	if _, err := d.client.ManageEvent(event); err != nil {
+	if _, err := d.client.ManageEventWithContext(context.TODO(), event); err != nil {
 		log.Printf("Error raising alert on pagerduty %s: %s", dedupKey, err)
 		return
 	}
@@ -87,7 +88,7 @@ func (d *Notifier) Resolve(dedupKey string) {
 		RoutingKey: d.routingKey,
 		DedupKey:   dedupKey,
 	}
-	if _, err := d.client.ManageEvent(event); err != nil {
+	if _, err := d.client.ManageEventWithContext(context.TODO(), event); err != nil {
 		log.Printf("Error resolving alert on pagerduty %s: %s", dedupKey, err)
 		return
 	}

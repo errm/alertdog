@@ -26,13 +26,14 @@ type PagerDuty interface {
 }
 
 type Alertdog struct {
-	AlertmanagerEndpoints []string `yaml:"alertmanager_endpoints"`
-	Expected              []*Prometheus
-	CheckInterval         time.Duration `yaml:"check_interval"`
-	Expiry                time.Duration
-	Port                  uint
-	PagerDutyKey          string `yaml:"pager_duty_key"`
-	PagerDutyRunbookURL   string `yaml:"pagerduty_runbook_url"`
+	AlertmanagerEndpoints  []string      `yaml:"alertmanager_endpoints"`
+	AlertmanagerTimeout    time.Duration `yaml:"alertmanager_timeout"`
+	Expected               []*Prometheus
+	CheckInterval          time.Duration `yaml:"check_interval"`
+	Expiry                 time.Duration
+	Port                   uint
+	PagerDutyKey           string `yaml:"pager_duty_key"`
+	PagerDutyRunbookURL    string `yaml:"pagerduty_runbook_url"`
 
 	mu           sync.RWMutex
 	checkedIn    time.Time
@@ -49,6 +50,7 @@ func (a *Alertdog) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	// set default values
 	a.CheckInterval = 2 * time.Minute
 	a.Expiry = 5 * time.Minute
+	a.AlertmanagerTimeout = 10 * time.Second
 	// https://github.com/prometheus/prometheus/wiki/Default-port-allocations
 	a.Port = 9796
 	a.PagerDutyKey = os.Getenv("PAGER_DUTY_KEY")
@@ -57,13 +59,17 @@ func (a *Alertdog) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 func (a *Alertdog) Setup() {
-	a.alertmanager = alertmanager.Alertmanager{Endpoints: a.AlertmanagerEndpoints, Expiry: a.CheckInterval * 2}
+	a.alertmanager = alertmanager.Alertmanager{
+		Endpoints:      a.AlertmanagerEndpoints,
+		Expiry:         a.CheckInterval * 2,
+		RequestTimeout: a.AlertmanagerTimeout,
+	}
 	a.pagerduty = pagerduty.New(a.PagerDutyKey, a.PagerDutyRunbookURL, nil)
 	a.PagerDutyKey = ""
 }
 
 func (a *Alertdog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 	var data template.Data
 	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
 		log.Printf("Webhook body invalid, skipping request: %s", err)

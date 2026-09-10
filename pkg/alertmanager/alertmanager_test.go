@@ -5,28 +5,28 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"testing"
 	"time"
 
-	"github.com/prometheus/alertmanager/client"
+	"sync/atomic"
+
+	"github.com/prometheus/alertmanager/api/v2/models"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 )
 
 func TestAlert(t *testing.T) {
 	var (
 		errc             = make(chan error, 1)
-		expected         = make([]*client.Alert, 0, 1)
+		expected         = make(models.PostableAlerts, 0, 1)
 		status1, status2 atomic.Int32
 		slow1, slow2     atomic.Bool
 	)
 
+
 	status1.Store(int32(http.StatusOK))
 	status2.Store(int32(http.StatusOK))
 
-	newHTTPServer := func(status *atomic.Int32, slow *atomic.Bool, checkAlerts func([]*client.Alert, []*client.Alert) error) *httptest.Server {
-
+	newHTTPServer := func(status *atomic.Int32, slow *atomic.Bool, checkAlerts func(models.PostableAlerts, models.PostableAlerts) error) *httptest.Server {
 		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var err error
 			defer func() {
@@ -38,8 +38,7 @@ func TestAlert(t *testing.T) {
 				default:
 				}
 			}()
-			var alerts []*client.Alert
-
+			var alerts models.PostableAlerts
 			err = json.NewDecoder(r.Body).Decode(&alerts)
 			if err == nil {
 				err = checkAlerts(expected, alerts)
@@ -47,7 +46,7 @@ func TestAlert(t *testing.T) {
 			s := int(status.Load())
 			w.WriteHeader(s)
 			if slow.Load() {
-				time.Sleep(11 * time.Second)
+				time.Sleep(500 * time.Millisecond)
 			}
 			if s == http.StatusOK {
 				if _, err := w.Write([]byte("{\"status\":\"success\"}")); err != nil {
@@ -68,11 +67,9 @@ func TestAlert(t *testing.T) {
 	defer server2.Close()
 
 	alertManager := Alertmanager{
-		Endpoints: []string{
-			server1.URL,
-			server2.URL,
-		},
-		Expiry: time.Minute,
+		Endpoints:      []string{server1.URL, server2.URL},
+		Expiry:         time.Minute,
+		RequestTimeout: 100 * time.Millisecond,
 	}
 
 	checkNoErr := func() {
@@ -84,11 +81,13 @@ func TestAlert(t *testing.T) {
 		}
 	}
 
-	expected = append(expected, &client.Alert{
-		Labels: toLabelSet(map[string]string{
-			"alertname": "PrometheusAlertFailure",
-			"foo":       "bar",
-		}),
+	expected = append(expected, &models.PostableAlert{
+		Alert: models.Alert{
+			Labels: models.LabelSet{
+				"alertname": "PrometheusAlertFailure",
+				"foo":       "bar",
+			},
+		},
 	})
 
 	// Both servers OK
@@ -120,7 +119,7 @@ func TestAlert(t *testing.T) {
 	}), "Alerting succeeded unexpectedly")
 	checkNoErr()
 
-	//Timeout
+	// Timeout
 	status1.Store(int32(http.StatusOK))
 	status2.Store(int32(http.StatusOK))
 	slow1.Store(true)
@@ -133,7 +132,7 @@ func TestAlert(t *testing.T) {
 	}), "Alerting succeeded unexpectedly")
 	checkNoErr()
 
-	//Dead server
+	// Dead server
 	server1.Close()
 	server2.Close()
 	require.Error(t, alertManager.Alert(Alert{
@@ -150,10 +149,8 @@ func TestAlert(t *testing.T) {
 	defer server2.Close()
 
 	alertManager = Alertmanager{
-		Endpoints: []string{
-			server1.URL,
-			server2.URL,
-		},
+		Endpoints:      []string{server1.URL, server2.URL},
+		RequestTimeout: 100 * time.Millisecond,
 	}
 
 	status1.Store(int32(http.StatusOK))
@@ -166,43 +163,52 @@ func TestAlert(t *testing.T) {
 		Labels: map[string]string{
 			"foo": "bar",
 		},
-	}), "Alerting succeeded unexpectedly")
+	}), "Resolve failed unexpectedly")
 }
 
-func alertsOK(expected, actual []*client.Alert) error {
+func alertsOK(expected, actual models.PostableAlerts) error {
 	if len(expected) != len(actual) {
 		return fmt.Errorf("length mismatch: %v != %v", expected, actual)
 	}
 	for i, alert := range expected {
-		if !labelsEqual(alert.Labels, actual[i].Labels) {
+		if !labelSetsEqual(alert.Labels, actual[i].Labels) {
 			return fmt.Errorf("label mismatch at index %d: %s != %s", i, alert.Labels, actual[i].Labels)
 		}
 	}
 	for _, alert := range actual {
-		if alert.EndsAt != alert.StartsAt.Add(time.Minute) {
-			return fmt.Errorf("Expected EndsAt to be %s was %s", alert.StartsAt.Add(time.Minute), alert.EndsAt)
+		expectedEndsAt := time.Time(alert.StartsAt).Add(time.Minute)
+		if !time.Time(alert.EndsAt).Equal(expectedEndsAt) {
+			return fmt.Errorf("expected EndsAt to be %s, was %s", expectedEndsAt, time.Time(alert.EndsAt))
 		}
 	}
 	return nil
 }
 
-func resolveOK(expected, actual []*client.Alert) error {
+func resolveOK(expected, actual models.PostableAlerts) error {
 	if len(expected) != len(actual) {
 		return fmt.Errorf("length mismatch: %v != %v", expected, actual)
 	}
 	for i, alert := range expected {
-		if !labelsEqual(alert.Labels, actual[i].Labels) {
-			return fmt.Errorf("label mismatch at index %d: %s != %s", i, alert.Labels, expected[i].Labels)
+		if !labelSetsEqual(alert.Labels, actual[i].Labels) {
+			return fmt.Errorf("label mismatch at index %d: %s != %s", i, alert.Labels, actual[i].Labels)
 		}
 	}
 	for _, alert := range actual {
-		if alert.EndsAt != alert.StartsAt {
-			return fmt.Errorf("Expected EndsAt to equal StartsAt  %s vs %s", alert.EndsAt, alert.StartsAt)
+		if !time.Time(alert.EndsAt).Equal(time.Time(alert.StartsAt)) {
+			return fmt.Errorf("expected EndsAt to equal StartsAt: %s vs %s", time.Time(alert.EndsAt), time.Time(alert.StartsAt))
 		}
 	}
 	return nil
 }
 
-func labelsEqual(a, b client.LabelSet) bool {
-	return reflect.DeepEqual(a, b)
+func labelSetsEqual(a, b models.LabelSet) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
 }

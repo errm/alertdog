@@ -49,7 +49,7 @@ data:
   prometheus.yml: |
     global:
       external_labels:
-        team: a
+        owner: team-a
     rule_files:
       - rules.yml
     alerting:

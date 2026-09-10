@@ -29,7 +29,7 @@ spec:
     spec:
       containers:
       - name: alertdog
-        image: quay.io/errm/alertdog:0.0.2
+        image: quay.io/errm/alertdog:0.0.5
         ports:
         - containerPort: 9767
         volumeMounts:

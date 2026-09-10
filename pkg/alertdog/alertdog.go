@@ -66,6 +66,7 @@ func (a *Alertdog) Setup() {
 	}
 	a.pagerduty = pagerduty.New(a.PagerDutyKey, a.PagerDutyRunbookURL, nil)
 	a.PagerDutyKey = ""
+	a.checkedIn = time.Now()
 }
 
 func (a *Alertdog) ServeHTTP(w http.ResponseWriter, r *http.Request) {

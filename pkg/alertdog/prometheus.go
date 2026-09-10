@@ -26,8 +26,9 @@ type Prometheus struct {
 }
 
 func (p *Prometheus) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	defaultExpiry, _ := time.ParseDuration("4m")
-	p.Expiry = defaultExpiry
+	// set default value
+	p.Expiry = 4 * time.Minute
+	p.checkedIn = time.Now()
 	type plain Prometheus
 	return unmarshal((*plain)(p))
 }

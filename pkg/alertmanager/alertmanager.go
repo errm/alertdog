@@ -79,8 +79,8 @@ func pushToAlertmanager(ctx context.Context, url string, b []byte) error {
 		return err
 	}
 	defer func() {
-		io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
 	}()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("bad response status %s", resp.Status)

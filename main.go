@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 
 	"gopkg.in/yaml.v2"
 
@@ -24,7 +24,7 @@ func main() {
 
 func readConfig() *alertdog.Alertdog {
 	var a *alertdog.Alertdog
-	configFile, err := ioutil.ReadFile("config.yml")
+	configFile, err := os.ReadFile("config.yml")
 	if err != nil {
 		log.Fatal(err)
 	}

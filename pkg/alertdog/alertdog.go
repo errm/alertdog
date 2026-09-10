@@ -69,7 +69,7 @@ func (a *Alertdog) Setup() {
 }
 
 func (a *Alertdog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 	var data template.Data
 	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
 		log.Printf("Webhook body invalid, skipping request: %s", err)
